@@ -23,9 +23,11 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -39,6 +41,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import com.challenge.sprinklify.ui.theme.CartoonTheme
 import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -110,51 +113,73 @@ fun ForecastFragment(navController: NavController, date: String, lat: String, ln
             navController.navigate("details/$title/$encodedData")
         }
     }
-
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Rain Prediction") },
-                navigationIcon = {
-                    IconButton(onClick = { navController.navigateUp() }) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back"
-                        )
-                    }
-                }
-            )
-        }
-    ) { innerPadding ->
-        if (isLoading) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
+    CartoonTheme {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text("Forecast Prediction") },
+                    navigationIcon = {
+                        IconButton(onClick = { navController.navigateUp() }) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back"
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        titleContentColor = MaterialTheme.colorScheme.onPrimary,
+                        navigationIconContentColor = MaterialTheme.colorScheme.onPrimary
+                    )
+                )
             }
-        } else {
-            Column(
-                modifier = Modifier
-                    .padding(innerPadding)
-                    .padding(16.dp)
-                    .fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(text = "Selected Date: $date", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                Text(text = "Lat: $lat, Lng: $lng", fontSize = 16.sp)
-                Spacer(modifier = Modifier.height(24.dp))
-                WeatherInfoCard(title = "Temperature", value = tempHistory?.values?.let { "%.2f°C".format(it.average()) } ?: "N/A", icon = Icons.Filled.Thermostat) {
-                    navigateToDetails("Temperature", tempHistory)
+        ) { innerPadding ->
+            if (isLoading) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
                 }
-                Spacer(modifier = Modifier.height(16.dp))
-                WeatherInfoCard(title = "Rain", value = precipHistory?.values?.let { "%.2f mm".format(it.average()) } ?: "N/A", icon = Icons.Filled.WaterDrop) {
-                    navigateToDetails("Rain", precipHistory)
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-                WeatherInfoCard(title = "Wind", value = windHistory?.values?.let { "%.2f m/s".format(it.average()) } ?: "N/A", icon = Icons.Filled.Air) {
-                    navigateToDetails("Wind", windHistory)
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-                WeatherInfoCard(title = "Snow", value = snowHistory?.values?.let { "%.2f cm".format(it.average()) } ?: "N/A", icon = Icons.Filled.AcUnit) {
-                    navigateToDetails("Snow", snowHistory)
+            } else {
+                Column(
+                    modifier = Modifier
+                        .padding(innerPadding)
+                        .padding(16.dp)
+                        .fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(text = "Selected Date: $date", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Text(text = "Lat: $lat, Lng: $lng", fontSize = 16.sp)
+                    Spacer(modifier = Modifier.height(24.dp))
+                    WeatherInfoCard(
+                        title = "Temperature",
+                        value = tempHistory?.values?.let { "%.2f°C".format(it.average()) } ?: "N/A",
+                        icon = Icons.Filled.Thermostat
+                    ) {
+                        navigateToDetails("Temperature", tempHistory)
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    WeatherInfoCard(
+                        title = "Rain",
+                        value = precipHistory?.values?.let { "%.2f mm".format(it.average()) } ?: "N/A",
+                        icon = Icons.Filled.WaterDrop
+                    ) {
+                        navigateToDetails("Rain", precipHistory)
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    WeatherInfoCard(
+                        title = "Wind",
+                        value = windHistory?.values?.let { "%.2f m/s".format(it.average()) } ?: "N/A",
+                        icon = Icons.Filled.Air
+                    ) {
+                        navigateToDetails("Wind", windHistory)
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    WeatherInfoCard(
+                        title = "Snow",
+                        value = snowHistory?.values?.let { "%.2f cm".format(it.average()) } ?: "N/A",
+                        icon = Icons.Filled.AcUnit
+                    ) {
+                        navigateToDetails("Snow", snowHistory)
+                    }
                 }
             }
         }
@@ -167,13 +192,19 @@ fun WeatherInfoCard(title: String, value: String, icon: ImageVector, onClick: ()
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Row(
             modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(40.dp))
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                modifier = Modifier.size(40.dp),
+                tint = MaterialTheme.colorScheme.primary
+            )
             Spacer(modifier = Modifier.height(16.dp))
             Column(modifier = Modifier.padding(start = 16.dp)) {
                 Text(text = title, fontSize = 18.sp, fontWeight = FontWeight.Medium)
