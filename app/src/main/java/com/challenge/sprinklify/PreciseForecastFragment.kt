@@ -2,10 +2,12 @@ package com.challenge.sprinklify
 
 import android.content.ContentValues
 import android.content.Context
+import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import android.util.Log
 import android.widget.Toast
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,10 +28,10 @@ import androidx.compose.material.icons.filled.Thermostat
 import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -38,6 +40,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -47,6 +50,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
@@ -59,12 +63,14 @@ import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.util.Calendar
 
+@RequiresApi(Build.VERSION_CODES.Q)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PreciseForecastFragment(navController: NavController, date: String, lat: String, lng: String) {
     var gesDiscHistory by remember { mutableStateOf<List<GesDiscParsedData>?>(null) }
     var snowHistory by remember { mutableStateOf<Map<Int, Float>?>(null) }
     var isLoading by remember { mutableStateOf(true) }
+    var progress by remember { mutableFloatStateOf(0f) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -77,23 +83,10 @@ fun PreciseForecastFragment(navController: NavController, date: String, lat: Str
                 val calendar = Calendar.getInstance()
                 val endYear = calendar.get(Calendar.YEAR) - 1
                 val startYear = endYear - 40
+                val totalYears = (endYear - startYear + 1).toFloat()
                 val monthDayString = "%02d%02d".format(month, day)
 
                 coroutineScope {
-                    val gesDiscDeferred = async {
-                        val historicalData = mutableListOf<GesDiscParsedData>()
-                        for (year in startYear..endYear) {
-                            try {
-                                val queryDate = LocalDate.of(year, month, day)
-                                val dailyData = GesDiscRepository.fetchAndParseSingleDayData(queryDate, lat.toDouble(), lng.toDouble())
-                                historicalData.add(dailyData)
-                            } catch (e: Exception) {
-                                Log.e("GesDiscYearError", "Failed to fetch GES DISC data for $year", e)
-                            }
-                        }
-                        historicalData
-                    }
-
                     val snowDeferred = async {
                         try {
                             RetrofitClient.instance.getPowerData(
@@ -112,13 +105,28 @@ fun PreciseForecastFragment(navController: NavController, date: String, lat: Str
                         }
                     }
 
-                    gesDiscHistory = gesDiscDeferred.await()
+                    val historicalData = mutableListOf<GesDiscParsedData>()
+                    (startYear..endYear).forEachIndexed { index, year ->
+                        withContext(Dispatchers.Main) {
+                            progress = (index + 1) / totalYears
+                        }
+                        try {
+                            val queryDate = LocalDate.of(year, month, day)
+                            val dailyData = GesDiscRepository.fetchAndParseSingleDayData(queryDate, lat.toDouble(), lng.toDouble())
+                            historicalData.add(dailyData)
+                        } catch (e: Exception) {
+                            Log.e("GesDiscYearError", "Failed to fetch GES DISC data for $year", e)
+                        }
+                    }
+                    gesDiscHistory = historicalData
                     snowHistory = snowDeferred.await()
                 }
             } catch (e: Exception) {
                 Log.e("PreciseForecastError", "Error fetching combined forecast data", e)
             } finally {
-                isLoading = false
+                withContext(Dispatchers.Main) {
+                    isLoading = false
+                }
             }
         }
     }
@@ -160,8 +168,19 @@ fun PreciseForecastFragment(navController: NavController, date: String, lat: Str
             }
         ) { innerPadding ->
             if (isLoading) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
+                Box(modifier = Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.Center) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(32.dp)
+                    ) {
+                        Text(
+                            text = "Please wait while we gather detailed data for the most accurate results.",
+                            style = MaterialTheme.typography.bodyLarge,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(bottom = 16.dp)
+                        )
+                        LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+                    }
                 }
             } else {
                 LazyColumn(
@@ -177,7 +196,6 @@ fun PreciseForecastFragment(navController: NavController, date: String, lat: Str
                         Spacer(modifier = Modifier.height(24.dp))
                     }
 
-                    // Calculate hourly averages
                     val hourlyTempAvgs = (0..23).map { hour ->
                         gesDiscHistory?.mapNotNull { it.hourlyTemperatures.getOrNull(hour) }?.average()?.takeIf { !it.isNaN() }
                     }
@@ -320,6 +338,7 @@ private fun createPreciseCsvData(
     return csvBuilder.toString()
 }
 
+@RequiresApi(Build.VERSION_CODES.Q)
 private fun saveCsvFile(context: Context, fileName: String, content: String) {
     val resolver = context.contentResolver
     val contentValues = ContentValues().apply {
