@@ -19,7 +19,7 @@ android {
 
     defaultConfig {
         applicationId = "com.challenge.sprinklify"
-        minSdk = 24
+        minSdk = 26
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
@@ -66,6 +66,7 @@ dependencies {
     implementation("androidx.fragment:fragment-ktx:1.6.2")
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
     implementation("com.squareup.retrofit2:converter-gson:2.9.0")
+    implementation(libs.mpandroidchart)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

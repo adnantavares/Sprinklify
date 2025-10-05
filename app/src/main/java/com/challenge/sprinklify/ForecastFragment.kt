@@ -1,6 +1,7 @@
 package com.challenge.sprinklify
 
 import android.util.Log
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -38,17 +39,19 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.net.URLEncoder
 import java.util.Calendar
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ForecastFragment(navController: NavController, date: String, lat: String, lng: String) {
-    var avgTemp by remember { mutableStateOf<Double?>(null) }
-    var avgPrecip by remember { mutableStateOf<Double?>(null) }
-    var avgWind by remember { mutableStateOf<Double?>(null) }
-    var avgSnow by remember { mutableStateOf<Double?>(null) }
+    var tempHistory by remember { mutableStateOf<Map<Int, Float>?>(null) }
+    var precipHistory by remember { mutableStateOf<Map<Int, Float>?>(null) }
+    var windHistory by remember { mutableStateOf<Map<Int, Float>?>(null) }
+    var snowHistory by remember { mutableStateOf<Map<Int, Float>?>(null) }
     var isLoading by remember { mutableStateOf(true) }
 
     LaunchedEffect(Unit) {
@@ -72,31 +75,39 @@ fun ForecastFragment(navController: NavController, date: String, lat: String, ln
                 val day = dateParts[1].toInt()
                 val monthDayString = "%02d%02d".format(month, day)
 
-                avgTemp = response.properties.parameter.temperature
+                tempHistory = response.properties.parameter.temperature
                     .filter { it.key.endsWith(monthDayString) && it.value != -999.0 }
-                    .values
-                    .average()
+                    .map { it.key.substring(0, 4).toInt() to it.value.toFloat() }
+                    .toMap()
 
-                avgPrecip = response.properties.parameter.precipitation
+                precipHistory = response.properties.parameter.precipitation
                     .filter { it.key.endsWith(monthDayString) && it.value != -999.0 }
-                    .values
-                    .average()
+                    .map { it.key.substring(0, 4).toInt() to it.value.toFloat() }
+                    .toMap()
 
-                avgWind = response.properties.parameter.windSpeed
+                windHistory = response.properties.parameter.windSpeed
                     .filter { it.key.endsWith(monthDayString) && it.value != -999.0 }
-                    .values
-                    .average()
+                    .map { it.key.substring(0, 4).toInt() to it.value.toFloat() }
+                    .toMap()
 
-                avgSnow = response.properties.parameter.snowDepth
+                snowHistory = response.properties.parameter.snowDepth
                     .filter { it.key.endsWith(monthDayString) && it.value != -999.0 }
-                    .values
-                    .average()
+                    .map { it.key.substring(0, 4).toInt() to it.value.toFloat() }
+                    .toMap()
 
             } catch (e: Exception) {
                 Log.e("NasaApiError", "Error fetching data", e)
             } finally {
                 isLoading = false
             }
+        }
+    }
+
+    fun navigateToDetails(title: String, data: Map<Int, Float>?) {
+        data?.let {
+            val json = Gson().toJson(it.values.toFloatArray())
+            val encodedData = URLEncoder.encode(json, "UTF-8")
+            navController.navigate("details/$title/$encodedData")
         }
     }
 
@@ -130,22 +141,32 @@ fun ForecastFragment(navController: NavController, date: String, lat: String, ln
                 Text(text = "Selected Date: $date", fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 Text(text = "Lat: $lat, Lng: $lng", fontSize = 16.sp)
                 Spacer(modifier = Modifier.height(24.dp))
-                WeatherInfoCard(title = "Temperature", value = avgTemp?.let { "%.2f°C".format(it) } ?: "N/A", icon = Icons.Filled.Thermostat)
+                WeatherInfoCard(title = "Temperature", value = tempHistory?.values?.let { "%.2f°C".format(it.average()) } ?: "N/A", icon = Icons.Filled.Thermostat) {
+                    navigateToDetails("Temperature", tempHistory)
+                }
                 Spacer(modifier = Modifier.height(16.dp))
-                WeatherInfoCard(title = "Rain", value = avgPrecip?.let { "%.2f mm".format(it) } ?: "N/A", icon = Icons.Filled.WaterDrop)
+                WeatherInfoCard(title = "Rain", value = precipHistory?.values?.let { "%.2f mm".format(it.average()) } ?: "N/A", icon = Icons.Filled.WaterDrop) {
+                    navigateToDetails("Rain", precipHistory)
+                }
                 Spacer(modifier = Modifier.height(16.dp))
-                WeatherInfoCard(title = "Wind", value = avgWind?.let { "%.2f m/s".format(it) } ?: "N/A", icon = Icons.Filled.Air)
+                WeatherInfoCard(title = "Wind", value = windHistory?.values?.let { "%.2f m/s".format(it.average()) } ?: "N/A", icon = Icons.Filled.Air) {
+                    navigateToDetails("Wind", windHistory)
+                }
                 Spacer(modifier = Modifier.height(16.dp))
-                WeatherInfoCard(title = "Snow", value = avgSnow?.let { "%.2f cm".format(it) } ?: "N/A", icon = Icons.Filled.AcUnit)
+                WeatherInfoCard(title = "Snow", value = snowHistory?.values?.let { "%.2f cm".format(it.average()) } ?: "N/A", icon = Icons.Filled.AcUnit) {
+                    navigateToDetails("Snow", snowHistory)
+                }
             }
         }
     }
 }
 
 @Composable
-fun WeatherInfoCard(title: String, value: String, icon: ImageVector) {
+fun WeatherInfoCard(title: String, value: String, icon: ImageVector, onClick: () -> Unit) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Row(

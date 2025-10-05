@@ -8,6 +8,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.google.gson.Gson
 
 class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -31,6 +32,19 @@ class MainActivity : FragmentActivity() {
                         date = backStackEntry.arguments?.getString("date") ?: "",
                         lat = backStackEntry.arguments?.getString("lat") ?: "",
                         lng = backStackEntry.arguments?.getString("lng") ?: ""
+                    )
+                }
+                composable(
+                    "details/{title}/{data}",
+                    arguments = listOf(
+                        navArgument("title") { type = NavType.StringType },
+                        navArgument("data") { type = NavType.StringType },
+                    )
+                ) { backStackEntry ->
+                    DetailsFragment(
+                        navController = navController,
+                        title = backStackEntry.arguments?.getString("title") ?: "",
+                        data = Gson().fromJson(backStackEntry.arguments?.getString("data"), FloatArray::class.java)
                     )
                 }
             }
