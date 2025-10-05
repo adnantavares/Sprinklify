@@ -4,4 +4,11 @@
     <style name="Theme.Sprinklify" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@color/cartoon_cream</item>
     </style>
+
+    <style name="CartoonDatePicker" parent="android:Theme.Material.Light.Dialog">
+        <item name="android:colorAccent">@color/sky_blue</item>
+        <item name="android:windowBackground">@color/cartoon_cream</item>
+        <item name="android:textColorPrimary">@color/dark_navy</item>
+        <item name="android:textColorSecondary">@color/dark_navy</item>
+    </style>
 </resources>

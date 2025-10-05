@@ -105,6 +105,7 @@ fun LocationPickerFragment(navController: NavController) {
                     val calendar = Calendar.getInstance()
                     val datePickerDialog = DatePickerDialog(
                         context,
+                        R.style.CartoonDatePicker,
                         { _: DatePicker, _: Int, month: Int, dayOfMonth: Int ->
                             selectedDate = "${month + 1}/$dayOfMonth"
                         },

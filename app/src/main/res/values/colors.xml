@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="cartoon_cream">#F3EEDA</color>
+    <color name="sky_blue">#5BC0EB</color>
+    <color name="dark_navy">#0F3057</color>
+    <color name="white">#FFFFFF</color>
 </resources>
