@@ -8,6 +8,8 @@ import android.provider.MediaStore
 import android.util.Log
 import android.widget.Toast
 import androidx.annotation.RequiresApi
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -174,7 +176,7 @@ fun PreciseForecastFragment(navController: NavController, date: String, lat: Str
                         modifier = Modifier.padding(32.dp)
                     ) {
                         Text(
-                            text = "Please wait while we gather detailed data for the most accurate results.",
+                            text = "Please wait while we gather detailed hourly data for the most accurate results.",
                             style = MaterialTheme.typography.bodyLarge,
                             textAlign = TextAlign.Center,
                             modifier = Modifier.padding(bottom = 16.dp)
@@ -212,21 +214,42 @@ fun PreciseForecastFragment(navController: NavController, date: String, lat: Str
                             title = "Temperature",
                             icon = Icons.Default.Thermostat,
                             hourlyData = hourlyTempAvgs,
-                            unit = "°C"
+                            unit = "°C",
+                            onHourClick = { hour ->
+                                val title = "Temperature at ${ String.format("%02d:00", hour)}"
+                                val data = gesDiscHistory?.mapNotNull { it.hourlyTemperatures.getOrNull(hour) }?.joinToString(",") { "%.2f".format(it) } ?: ""
+                                if (data.isNotEmpty()) {
+                                    navController.navigate("details/$title/$data")
+                                }
+                            }
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                         HourlyWeatherCard(
                             title = "Wind Speed",
                             icon = Icons.Default.Air,
                             hourlyData = hourlyWindAvgs,
-                            unit = "m/s"
+                            unit = "m/s",
+                            onHourClick = { hour ->
+                                val title = "Wind Speed at ${ String.format("%02d:00", hour)}"
+                                val data = gesDiscHistory?.mapNotNull { it.hourlyWindSpeeds.getOrNull(hour) }?.joinToString(",") { "%.2f".format(it) } ?: ""
+                                if (data.isNotEmpty()) {
+                                    navController.navigate("details/$title/$data")
+                                }
+                            }
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                         HourlyWeatherCard(
                             title = "Precipitation",
                             icon = Icons.Default.WaterDrop,
                             hourlyData = hourlyPrecipAvgs,
-                            unit = "mm"
+                            unit = "mm",
+                            onHourClick = { hour ->
+                                val title = "Precipitation at ${ String.format("%02d:00", hour)}"
+                                val data = gesDiscHistory?.mapNotNull { it.hourlyPrecipitation.getOrNull(hour) }?.joinToString(",") { "%.2f".format(it) } ?: ""
+                                if (data.isNotEmpty()) {
+                                    navController.navigate("details/$title/$data")
+                                }
+                            }
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                         DailyAverageCard(
@@ -242,7 +265,13 @@ fun PreciseForecastFragment(navController: NavController, date: String, lat: Str
 }
 
 @Composable
-fun HourlyWeatherCard(title: String, icon: ImageVector, hourlyData: List<Double?>, unit: String) {
+fun HourlyWeatherCard(
+    title: String,
+    icon: ImageVector,
+    hourlyData: List<Double?>,
+    unit: String,
+    onHourClick: (hour: Int) -> Unit
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
@@ -260,7 +289,8 @@ fun HourlyWeatherCard(title: String, icon: ImageVector, hourlyData: List<Double?
                     HourlyDataItem(
                         hour = hour,
                         value = hourlyData.getOrNull(hour),
-                        unit = unit
+                        unit = unit,
+                        onClick = { onHourClick(hour) }
                     )
                 }
             }
@@ -291,25 +321,34 @@ fun DailyAverageCard(title: String, icon: ImageVector, value: String) {
 }
 
 @Composable
-fun HourlyDataItem(hour: Int, value: Double?, unit: String) {
-    Row(
+fun HourlyDataItem(hour: Int, value: Double?, unit: String, onClick: () -> Unit) {
+    Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+            .padding(vertical = 2.dp)
+            .clickable(onClick = onClick),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
-        Text(
-            text = "%02d:00".format(hour),
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Medium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Text(
-            text = value?.let { "%.2f $unit".format(it) } ?: "N/A",
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Bold
-        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "%02d:00".format(hour),
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = value?.let { "%.2f $unit".format(it) } ?: "N/A",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
     }
 }
 
