@@ -1,6 +1,11 @@
 package com.challenge.sprinklify
 
+import android.content.ContentValues
+import android.content.Context
+import android.os.Environment
+import android.provider.MediaStore
 import android.util.Log
+import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AcUnit
 import androidx.compose.material.icons.filled.Air
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Thermostat
 import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material3.Card
@@ -34,10 +40,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -46,6 +54,7 @@ import com.challenge.sprinklify.ui.theme.CartoonTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.util.Calendar
@@ -56,6 +65,8 @@ fun PreciseForecastFragment(navController: NavController, date: String, lat: Str
     var gesDiscHistory by remember { mutableStateOf<List<GesDiscParsedData>?>(null) }
     var snowHistory by remember { mutableStateOf<Map<Int, Float>?>(null) }
     var isLoading by remember { mutableStateOf(true) }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
@@ -120,6 +131,24 @@ fun PreciseForecastFragment(navController: NavController, date: String, lat: Str
                     navigationIcon = {
                         IconButton(onClick = { navController.navigateUp() }) {
                             Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                    },
+                    actions = {
+                        if (!isLoading) {
+                            IconButton(onClick = {
+                                scope.launch(Dispatchers.IO) {
+                                    val csvData = createPreciseCsvData(gesDiscHistory, snowHistory)
+                                    if (csvData.isNotEmpty()) {
+                                        val fileName = "precise_forecast_${date.replace('/', '-')}.csv"
+                                        saveCsvFile(context, fileName, csvData)
+                                        withContext(Dispatchers.Main) {
+                                            Toast.makeText(context, "Saved to Downloads/$fileName", Toast.LENGTH_LONG).show()
+                                        }
+                                    }
+                                }
+                            }) {
+                                Icon(Icons.Default.Download, contentDescription = "Download CSV")
+                            }
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
@@ -263,5 +292,50 @@ fun HourlyDataItem(hour: Int, value: Double?, unit: String) {
             fontSize = 16.sp,
             fontWeight = FontWeight.Bold
         )
+    }
+}
+
+private fun createPreciseCsvData(
+    gesDiscHistory: List<GesDiscParsedData>?,
+    snowHistory: Map<Int, Float>?
+): String {
+    if (gesDiscHistory.isNullOrEmpty()) return ""
+
+    val header = "year,month,day,hour,temperature_celsius,wind_speed_m_s,precipitation_mm,snow_depth_cm\n"
+    val csvBuilder = StringBuilder(header)
+
+    gesDiscHistory.sortedBy { it.date.year }.forEach { dailyData ->
+        val year = dailyData.date.year
+        val month = dailyData.date.monthValue
+        val day = dailyData.date.dayOfMonth
+        val snowDepth = snowHistory?.get(year) ?: ""
+
+        (0..23).forEach { hour ->
+            val temp = dailyData.hourlyTemperatures.getOrNull(hour) ?: ""
+            val wind = dailyData.hourlyWindSpeeds.getOrNull(hour) ?: ""
+            val precip = dailyData.hourlyPrecipitation.getOrNull(hour) ?: ""
+            csvBuilder.append("$year,$month,$day,$hour,$temp,$wind,$precip,$snowDepth\n")
+        }
+    }
+    return csvBuilder.toString()
+}
+
+private fun saveCsvFile(context: Context, fileName: String, content: String) {
+    val resolver = context.contentResolver
+    val contentValues = ContentValues().apply {
+        put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+        put(MediaStore.MediaColumns.MIME_TYPE, "text/csv")
+        put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+    }
+
+    val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
+    uri?.let {
+        try {
+            resolver.openOutputStream(it)?.use { outputStream ->
+                outputStream.write(content.toByteArray())
+            }
+        } catch (e: Exception) {
+            Log.e("SaveCsvError", "Error saving CSV file", e)
+        }
     }
 }
