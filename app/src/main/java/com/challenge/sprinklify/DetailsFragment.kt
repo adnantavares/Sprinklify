@@ -66,6 +66,12 @@ fun DetailsFragment(navController: NavController, title: String, data: FloatArra
         Pair(entries, formatter)
     }
 
+    val yearValueFormatter = object : ValueFormatter() {
+        override fun getAxisLabel(value: Float, axis: com.github.mikephil.charting.components.AxisBase?): String {
+            return value.toInt().toString()
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -98,6 +104,8 @@ fun DetailsFragment(navController: NavController, title: String, data: FloatArra
                         }
                         this.data = LineData(lineDataSet)
                         this.xAxis.position = XAxis.XAxisPosition.BOTTOM
+                        this.xAxis.valueFormatter = yearValueFormatter
+                        this.xAxis.setLabelCount(10, true)
                         invalidate()
                     }
                 }
