@@ -14,6 +14,9 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -42,6 +45,8 @@ fun LocationPickerFragment(navController: NavController) {
     val mapFragment = remember { SupportMapFragment.newInstance() }
     var selectedDate by remember { mutableStateOf("Select Date") }
     var selectedLocation by remember { mutableStateOf<LatLng?>(null) }
+    val modes = listOf("Simple", "Precision")
+    var selectedModeIndex by remember { mutableStateOf(0) }
 
     CartoonTheme {
         Scaffold {
@@ -84,16 +89,35 @@ fun LocationPickerFragment(navController: NavController) {
                     }
                 )
 
-                Box(
+                Column(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
-                        .padding(top = 16.dp)
+                        .padding(top = 16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Image(
                         painter = painterResource(id = R.drawable.sprinklify_transparency),
                         contentDescription = "App Logo",
                         modifier = Modifier.height(60.dp)
                     )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    SingleChoiceSegmentedButtonRow {
+                        modes.forEachIndexed { index, label ->
+                            SegmentedButton(
+                                shape = SegmentedButtonDefaults.itemShape(index = index, count = modes.size),
+                                onClick = { selectedModeIndex = index },
+                                selected = index == selectedModeIndex,
+                                colors = SegmentedButtonDefaults.colors(
+                                    activeContainerColor = MaterialTheme.colorScheme.primary,
+                                    inactiveContainerColor = MaterialTheme.colorScheme.surface,
+                                    activeContentColor = MaterialTheme.colorScheme.onPrimary,
+                                    inactiveContentColor = MaterialTheme.colorScheme.onSurface
+                                )
+                            ) {
+                                Text(label)
+                            }
+                        }
+                    }
                 }
 
                 Column(
@@ -129,7 +153,8 @@ fun LocationPickerFragment(navController: NavController) {
                     Button(
                         onClick = {
                             val encodedDate = URLEncoder.encode(selectedDate, "UTF-8")
-                            navController.navigate("forecast/$encodedDate/${selectedLocation!!.latitude}/${selectedLocation!!.longitude}")
+                            val selectedMode = modes[selectedModeIndex]
+                            navController.navigate("forecast/$encodedDate/${selectedLocation!!.latitude}/${selectedLocation!!.longitude}/$selectedMode")
                         },
                         enabled = selectedDate != "Select Date" && selectedLocation != null,
                         colors = ButtonDefaults.buttonColors(

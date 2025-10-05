@@ -18,11 +18,12 @@ class MainActivity : FragmentActivity() {
                 composable("location") {
                     LocationPickerFragment(navController)
                 }
-                composable("forecast/{date}/{lat}/{lng}") { backStackEntry ->
+                composable("forecast/{date}/{lat}/{lng}/{mode}") { backStackEntry ->
                     val date = backStackEntry.arguments?.getString("date") ?: ""
                     val lat = backStackEntry.arguments?.getString("lat") ?: ""
                     val lng = backStackEntry.arguments?.getString("lng") ?: ""
-                    ForecastFragment(navController, date, lat, lng)
+                    val mode = backStackEntry.arguments?.getString("mode") ?: "Simple"
+                    ForecastFragment(navController, date, lat, lng, mode)
                 }
                 composable("details/{title}/{data}") { backStackEntry ->
                     val title = backStackEntry.arguments?.getString("title") ?: ""
