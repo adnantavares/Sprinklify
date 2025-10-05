@@ -17,9 +17,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AcUnit
 import androidx.compose.material.icons.filled.Air
 import androidx.compose.material.icons.filled.Thermostat
-import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material.icons.filled.WaterDrop
-import androidx.compose.material.icons.filled.NightsStay
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -150,43 +148,38 @@ fun PreciseForecastFragment(navController: NavController, date: String, lat: Str
                         Spacer(modifier = Modifier.height(24.dp))
                     }
 
-                    val avgMorningTemp = gesDiscHistory?.mapNotNull { it.morningTemperatureInCelsius }?.average()?.takeIf { !it.isNaN() }
-                    val avgAfternoonTemp = gesDiscHistory?.mapNotNull { it.afternoonTemperatureInCelsius }?.average()?.takeIf { !it.isNaN() }
-                    val avgNightTemp = gesDiscHistory?.mapNotNull { it.nightTemperatureInCelsius }?.average()?.takeIf { !it.isNaN() }
-
-                    val avgMorningWind = gesDiscHistory?.mapNotNull { it.morningWindSpeed }?.average()?.takeIf { !it.isNaN() }
-                    val avgAfternoonWind = gesDiscHistory?.mapNotNull { it.afternoonWindSpeed }?.average()?.takeIf { !it.isNaN() }
-                    val avgNightWind = gesDiscHistory?.mapNotNull { it.nightWindSpeed }?.average()?.takeIf { !it.isNaN() }
-
-                    val avgMorningPrecip = gesDiscHistory?.mapNotNull { it.morningPrecipitationInMm }?.average()?.takeIf { !it.isNaN() }
-                    val avgAfternoonPrecip = gesDiscHistory?.mapNotNull { it.afternoonPrecipitationInMm }?.average()?.takeIf { !it.isNaN() }
-                    val avgNightPrecip = gesDiscHistory?.mapNotNull { it.nightPrecipitationInMm }?.average()?.takeIf { !it.isNaN() }
-
+                    // Calculate hourly averages
+                    val hourlyTempAvgs = (0..23).map { hour ->
+                        gesDiscHistory?.mapNotNull { it.hourlyTemperatures.getOrNull(hour) }?.average()?.takeIf { !it.isNaN() }
+                    }
+                    val hourlyWindAvgs = (0..23).map { hour ->
+                        gesDiscHistory?.mapNotNull { it.hourlyWindSpeeds.getOrNull(hour) }?.average()?.takeIf { !it.isNaN() }
+                    }
+                    val hourlyPrecipAvgs = (0..23).map { hour ->
+                        gesDiscHistory?.mapNotNull { it.hourlyPrecipitation.getOrNull(hour) }?.average()?.takeIf { !it.isNaN() }
+                    }
                     val avgSnow = snowHistory?.values?.average()?.takeIf { !it.isNaN() }
 
                     item {
-                        WeatherMetricCard(
+                        HourlyWeatherCard(
                             title = "Temperature",
                             icon = Icons.Default.Thermostat,
-                            morningValue = avgMorningTemp?.let { "%.2f°C".format(it) } ?: "N/A",
-                            afternoonValue = avgAfternoonTemp?.let { "%.2f°C".format(it) } ?: "N/A",
-                            nightValue = avgNightTemp?.let { "%.2f°C".format(it) } ?: "N/A"
+                            hourlyData = hourlyTempAvgs,
+                            unit = "°C"
                         )
                         Spacer(modifier = Modifier.height(16.dp))
-                        WeatherMetricCard(
+                        HourlyWeatherCard(
                             title = "Wind Speed",
                             icon = Icons.Default.Air,
-                            morningValue = avgMorningWind?.let { "%.2f m/s".format(it) } ?: "N/A",
-                            afternoonValue = avgAfternoonWind?.let { "%.2f m/s".format(it) } ?: "N/A",
-                            nightValue = avgNightWind?.let { "%.2f m/s".format(it) } ?: "N/A"
+                            hourlyData = hourlyWindAvgs,
+                            unit = "m/s"
                         )
                         Spacer(modifier = Modifier.height(16.dp))
-                        WeatherMetricCard(
+                        HourlyWeatherCard(
                             title = "Precipitation",
                             icon = Icons.Default.WaterDrop,
-                            morningValue = avgMorningPrecip?.let { "%.2f mm".format(it) } ?: "N/A",
-                            afternoonValue = avgAfternoonPrecip?.let { "%.2f mm".format(it) } ?: "N/A",
-                            nightValue = avgNightPrecip?.let { "%.2f mm".format(it) } ?: "N/A"
+                            hourlyData = hourlyPrecipAvgs,
+                            unit = "mm"
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                         DailyAverageCard(
@@ -202,7 +195,7 @@ fun PreciseForecastFragment(navController: NavController, date: String, lat: Str
 }
 
 @Composable
-fun WeatherMetricCard(title: String, icon: ImageVector, morningValue: String, afternoonValue: String, nightValue: String) {
+fun HourlyWeatherCard(title: String, icon: ImageVector, hourlyData: List<Double?>, unit: String) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
@@ -214,11 +207,15 @@ fun WeatherMetricCard(title: String, icon: ImageVector, morningValue: String, af
                 Spacer(modifier = Modifier.padding(horizontal = 8.dp))
                 Text(text = title, fontSize = 20.sp, fontWeight = FontWeight.Bold)
             }
-            Spacer(modifier = Modifier.height(16.dp))
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
-                TimeOfDayItem(icon = Icons.Default.WbSunny, label = "Morning", value = morningValue)
-                TimeOfDayItem(icon = Icons.Default.WbSunny, label = "Afternoon", value = afternoonValue) // Consider a different icon for afternoon
-                TimeOfDayItem(icon = Icons.Default.NightsStay, label = "Night", value = nightValue)
+            Spacer(modifier = Modifier.height(8.dp))
+            Column(modifier = Modifier.padding(horizontal = 8.dp)) {
+                (0..23).forEach { hour ->
+                    HourlyDataItem(
+                        hour = hour,
+                        value = hourlyData.getOrNull(hour),
+                        unit = unit
+                    )
+                }
             }
         }
     }
@@ -231,7 +228,11 @@ fun DailyAverageCard(title: String, icon: ImageVector, value: String) {
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
-        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
             Icon(imageVector = icon, contentDescription = title, modifier = Modifier.size(32.dp), tint = MaterialTheme.colorScheme.primary)
             Spacer(modifier = Modifier.padding(horizontal = 8.dp))
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -243,10 +244,24 @@ fun DailyAverageCard(title: String, icon: ImageVector, value: String) {
 }
 
 @Composable
-fun TimeOfDayItem(icon: ImageVector, label: String, value: String) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Icon(imageVector = icon, contentDescription = label, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(24.dp))
-        Text(text = label, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-        Text(text = value, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+fun HourlyDataItem(hour: Int, value: Double?, unit: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "%02d:00".format(hour),
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            text = value?.let { "%.2f $unit".format(it) } ?: "N/A",
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold
+        )
     }
 }

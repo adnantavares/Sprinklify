@@ -89,17 +89,13 @@ object GesDiscQueryBuilder {
     }
 }
 
+// Holds the full 24-hour data for each metric
+
 data class GesDiscParsedData(
     val date: LocalDate,
-    val morningTemperatureInCelsius: Double?,
-    val afternoonTemperatureInCelsius: Double?,
-    val nightTemperatureInCelsius: Double?,
-    val morningWindSpeed: Double?,
-    val afternoonWindSpeed: Double?,
-    val nightWindSpeed: Double?,
-    val morningPrecipitationInMm: Double?,
-    val afternoonPrecipitationInMm: Double?,
-    val nightPrecipitationInMm: Double?
+    val hourlyTemperatures: List<Double?>,
+    val hourlyWindSpeeds: List<Double?>,
+    val hourlyPrecipitation: List<Double?>
 )
 
 // --- Parsing and Repository Layer ---
@@ -139,47 +135,41 @@ object GesDiscRepository {
         val slvData = slvDataDeferred.await()
         val flxData = flxDataDeferred.await()
 
-        fun getAverages(data: List<Double>?): Map<String, Double> {
-            if (data == null || data.size != 25) return emptyMap()
-            return mapOf(
-                "morning" to data.subList(0, 8).average(),
-                "afternoon" to data.subList(8, 16).average(),
-                "night" to data.subList(16, 24).average()
-            )
+        // Cleans data by removing fill values and applying a realistic range, then pads to ensure a size of 24.
+        fun cleanAndPad(data: List<Double>?, validRange: ClosedRange<Double>? = null): List<Double?> {
+            val fillValueThreshold = 1e10
+            val cleaned = data?.map {
+                val isValid = it != null && it < fillValueThreshold && (validRange == null || it in validRange)
+                if (isValid) it else null
+            } ?: emptyList()
+            // Take the first 24 items, and if the list is shorter, pad with nulls to ensure a size of 24.
+            return (cleaned + List(24) { null }).take(24)
         }
 
-        val tempAvgs = getAverages(slvData["T2M"])
-        val uWindAvgs = getAverages(slvData["U10M"])
-        val vWindAvgs = getAverages(slvData["V10M"])
-        val precipAvgs = getAverages(flxData["PRECTOT"])
+        // Define realistic ranges to filter out absurd, non-physical values.
+        val tempRangeK = 183.0..333.0       // -90C to 60C
+        val windRange = -150.0..150.0     // For U/V components
+        val precipRateRange = 0.0..1.0    // Precipitation rate in kg/m^2/s (1.0 is ~3600 mm/hr)
 
-        val morningU = uWindAvgs["morning"]
-        val morningV = vWindAvgs["morning"]
-        val morningWind = if (morningU != null && morningV != null) sqrt(morningU.pow(2) + morningV.pow(2)) else null
+        val hourlyTempsK = cleanAndPad(slvData["T2M"], tempRangeK)
+        val uWind = cleanAndPad(slvData["U10M"], windRange)
+        val vWind = cleanAndPad(slvData["V10M"], windRange)
+        val precipRates = cleanAndPad(flxData["PRECTOT"], precipRateRange)
 
-        val afternoonU = uWindAvgs["afternoon"]
-        val afternoonV = vWindAvgs["afternoon"]
-        val afternoonWind = if (afternoonU != null && afternoonV != null) sqrt(afternoonU.pow(2) + afternoonV.pow(2)) else null
+        val hourlyTempsC = hourlyTempsK.map { tempK -> tempK?.minus(273.15) }
 
-        val nightU = uWindAvgs["night"]
-        val nightV = vWindAvgs["night"]
-        val nightWind = if (nightU != null && nightV != null) sqrt(nightU.pow(2) + nightV.pow(2)) else null
+        val hourlyWindSpeeds = uWind.zip(vWind).map { (u, v) ->
+            if (u != null && v != null) sqrt(u.pow(2) + v.pow(2)) else null
+        }
 
-        // Rate is in kg/m^2/s (or mm/s). To get total precipitation for a period,
-        // multiply the average rate by the period duration in seconds (8 hours).
-        val precipConversionFactor = 8 * 3600
+        // Rate is in kg/m^2/s (or mm/s). To get total mm for one hour, multiply by 3600.
+        val hourlyPrecipitation = precipRates.map { rate -> rate?.times(3600) }
 
         GesDiscParsedData(
             date = date,
-            morningTemperatureInCelsius = tempAvgs["morning"]?.minus(273.15),
-            afternoonTemperatureInCelsius = tempAvgs["afternoon"]?.minus(273.15),
-            nightTemperatureInCelsius = tempAvgs["night"]?.minus(273.15),
-            morningWindSpeed = morningWind,
-            afternoonWindSpeed = afternoonWind,
-            nightWindSpeed = nightWind,
-            morningPrecipitationInMm = precipAvgs["morning"]?.times(precipConversionFactor),
-            afternoonPrecipitationInMm = precipAvgs["afternoon"]?.times(precipConversionFactor),
-            nightPrecipitationInMm = precipAvgs["night"]?.times(precipConversionFactor)
+            hourlyTemperatures = hourlyTempsC,
+            hourlyWindSpeeds = hourlyWindSpeeds,
+            hourlyPrecipitation = hourlyPrecipitation
         )
     }
 }
