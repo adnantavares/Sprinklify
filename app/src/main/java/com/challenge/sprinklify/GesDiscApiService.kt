@@ -1,6 +1,8 @@
 package com.challenge.sprinklify
 
 import com.challenge.sprinklify.BuildConfig
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.ResponseBody
@@ -19,22 +21,11 @@ import kotlin.math.sqrt
 
 // --- Network Layer ---
 
-/**
- * Interceptor to add the Authorization token to GES DISC requests.
- * The token is read from BuildConfig, which is populated from local.properties.
- */
 private class AuthInterceptor : Interceptor {
     override fun intercept(chain: Interceptor.Chain): okhttp3.Response {
         val token = BuildConfig.GES_DISC_BEARER_TOKEN
-
-        if (token.isBlank()) {
-            // Proceed without the header if the token is missing.
-            // Consider logging a warning here in a real application.
-            return chain.proceed(chain.request())
-        }
-
-        val originalRequest = chain.request()
-        val newRequest = originalRequest.newBuilder()
+        if (token.isBlank()) return chain.proceed(chain.request())
+        val newRequest = chain.request().newBuilder()
             .header("Authorization", "Bearer $token")
             .build()
         return chain.proceed(newRequest)
@@ -48,53 +39,53 @@ interface GesDiscApiService {
 
 object GesDiscRetrofitClient {
     const val BASE_URL = "https://goldsmr4.gesdisc.eosdis.nasa.gov/"
-
-    private val okHttpClient = OkHttpClient.Builder()
-        .addInterceptor(AuthInterceptor())
-        .build()
-
+    private val okHttpClient = OkHttpClient.Builder().addInterceptor(AuthInterceptor()).build()
     val instance: GesDiscApiService by lazy {
-        Retrofit.Builder()
-            .baseUrl(BASE_URL)
-            .client(okHttpClient)
-            .build()
-            .create(GesDiscApiService::class.java)
+        Retrofit.Builder().baseUrl(BASE_URL).client(okHttpClient).build().create(GesDiscApiService::class.java)
     }
 }
 
 // --- Query and Data Model ---
 
 object GesDiscQueryBuilder {
-    // Using the hourly single-level diagnostics dataset (SLV)
-    private const val DATASET_URL_PREFIX = "opendap/MERRA2/M2T1NXSLV.5.12.4"
+    private const val SLV_PREFIX = "opendap/MERRA2/M2T1NXSLV.5.12.4"
+    private const val FLX_PREFIX = "opendap/MERRA2/M2T1NXFLX.5.12.4"
     private val dateFormatter = DateTimeFormatter.ofPattern("yyyyMMdd")
     private val yearFormatter = DateTimeFormatter.ofPattern("yyyy")
     private val monthFormatter = DateTimeFormatter.ofPattern("MM")
 
-    // Variables available in the M2T1NXSLV dataset.
-    // Note: Precipitation (PRECTOT) and Snow (SNOMAS/SNODP) are in different MERRA-2 datasets.
-    val merra2Variables = mapOf(
-        "temperature" to "T2M", // 2-meter air temperature (Kelvin)
-        "wind_u" to "U10M",      // 10-meter eastward wind (m s-1)
-        "wind_v" to "V10M"       // 10-meter northward wind (m s-1)
-    )
+    val slvVariables = listOf("T2M", "U10M", "V10M")
+    val flxVariables = listOf("PRECTOT") // Only fetching precipitation
 
-    fun buildUrl(date: LocalDate, lat: Double, lon: Double, variables: List<String>): String {
+    private fun getStreamForYear(year: Int): Int {
+        return when {
+            year >= 2011 -> 400
+            year >= 2001 -> 300
+            year >= 1992 -> 200
+            else -> 100 // For years 1980-1991
+        }
+    }
+
+    fun buildUrl(dataset: String, date: LocalDate, lat: Double, lon: Double, variables: List<String>): String {
+        val prefix = when (dataset) {
+            "SLV" -> SLV_PREFIX
+            "FLX" -> FLX_PREFIX
+            else -> throw IllegalArgumentException("Unknown dataset: $dataset")
+        }
+        val fileId = dataset.lowercase()
+
         val year = date.format(yearFormatter)
         val month = date.format(monthFormatter)
         val dayFilename = date.format(dateFormatter)
 
         val latIndex = ((lat + 90.0) / 0.5).toInt().coerceIn(0, 360)
         val lonIndex = ((lon + 180.0) / 0.625).toInt().coerceIn(0, 575)
-
-        // Fetch all 24 hourly time steps for the day to calculate a daily average.
         val timeQuery = "[0:23]"
 
-        val variableQuery = variables.joinToString(",") { variable ->
-            "$variable$timeQuery[$latIndex:$latIndex][$lonIndex:$lonIndex]"
-        }
+        val variableQuery = variables.joinToString(",") { "$it$timeQuery[$latIndex:$latIndex][$lonIndex:$lonIndex]" }
+        val stream = getStreamForYear(date.year)
 
-        return "${GesDiscRetrofitClient.BASE_URL}$DATASET_URL_PREFIX/$year/$month/MERRA2_400.tavg1_2d_slv_Nx.${dayFilename}.nc4.ascii?$variableQuery"
+        return "${GesDiscRetrofitClient.BASE_URL}$prefix/$year/$month/MERRA2_${stream}.tavg1_2d_${fileId}_Nx.${dayFilename}.nc4.ascii?$variableQuery"
     }
 }
 
@@ -106,8 +97,9 @@ data class GesDiscParsedData(
     val morningWindSpeed: Double?,
     val afternoonWindSpeed: Double?,
     val nightWindSpeed: Double?,
-    val precipitation: Double?, // Placeholder, not available in this specific dataset
-    val snowMass: Double?      // Placeholder, not available in this specific dataset
+    val morningPrecipitationInMm: Double?,
+    val afternoonPrecipitationInMm: Double?,
+    val nightPrecipitationInMm: Double?
 )
 
 // --- Parsing and Repository Layer ---
@@ -121,9 +113,7 @@ object GesDiscDataParser {
                 val description = parts[0]
                 val value = parts.last().trim().toDoubleOrNull()
                 if (value != null) {
-                    requestedVariables.find { description.startsWith(it) }?.let {
-                        results[it]?.add(value)
-                    }
+                    requestedVariables.find { description.startsWith(it) }?.let { results[it]?.add(value) }
                 }
             }
         }
@@ -132,62 +122,64 @@ object GesDiscDataParser {
 }
 
 object GesDiscRepository {
-    suspend fun fetchAndParseSingleDayData(date: LocalDate, lat: Double, lon: Double): GesDiscParsedData {
-        val variablesToFetch = GesDiscQueryBuilder.merra2Variables.values.toList()
-        val url = GesDiscQueryBuilder.buildUrl(date, lat, lon, variablesToFetch)
-
+    private suspend fun fetchForDataset(dataset: String, date: LocalDate, lat: Double, lon: Double, variables: List<String>): Map<String, List<Double>> {
+        if (variables.isEmpty()) return emptyMap()
+        val url = GesDiscQueryBuilder.buildUrl(dataset, date, lat, lon, variables)
         val response = GesDiscRetrofitClient.instance.getOpenDapData(url)
-
         if (!response.isSuccessful || response.body() == null) {
-            throw Exception("Failed to fetch data from GES DISC: ${response.errorBody()?.string()}")
+            throw Exception("Failed to fetch from $dataset for year ${date.year}: ${response.errorBody()?.string()}")
         }
+        return GesDiscDataParser.parse(response.body()!!.string(), variables)
+    }
 
-        val responseText = response.body()!!.string()
-        val parsedMap = GesDiscDataParser.parse(responseText, variablesToFetch)
+    suspend fun fetchAndParseSingleDayData(date: LocalDate, lat: Double, lon: Double): GesDiscParsedData = coroutineScope {
+        val slvDataDeferred = async { fetchForDataset("SLV", date, lat, lon, GesDiscQueryBuilder.slvVariables) }
+        val flxDataDeferred = async { fetchForDataset("FLX", date, lat, lon, GesDiscQueryBuilder.flxVariables) }
 
-        // Helper to calculate averages for different time periods
+        val slvData = slvDataDeferred.await()
+        val flxData = flxDataDeferred.await()
+
         fun getAverages(data: List<Double>?): Map<String, Double> {
             if (data == null || data.size != 25) return emptyMap()
             return mapOf(
-                // Morning: 06:00 - 11:59 (indices 6-11)
-                "morning" to data.subList(6, 12).average(),
-                // Afternoon: 12:00 - 17:59 (indices 12-17)
-                "afternoon" to data.subList(12, 18).average(),
-                // Night: 18:00 - 05:59 (indices 18-23 and 0-5)
-                "night" to (data.subList(18, 24) + data.subList(0, 6)).average()
+                "morning" to data.subList(0, 8).average(),
+                "afternoon" to data.subList(8, 16).average(),
+                "night" to data.subList(16, 24).average()
             )
         }
 
-        val tempKelvinAvgs = getAverages(parsedMap[GesDiscQueryBuilder.merra2Variables["temperature"]])
-        val morningTempC = tempKelvinAvgs["morning"]?.minus(273.15)
-        val afternoonTempC = tempKelvinAvgs["afternoon"]?.minus(273.15)
-        val nightTempC = tempKelvinAvgs["night"]?.minus(273.15)
-
-        val uWindAvgs = getAverages(parsedMap[GesDiscQueryBuilder.merra2Variables["wind_u"]])
-        val vWindAvgs = getAverages(parsedMap[GesDiscQueryBuilder.merra2Variables["wind_v"]])
+        val tempAvgs = getAverages(slvData["T2M"])
+        val uWindAvgs = getAverages(slvData["U10M"])
+        val vWindAvgs = getAverages(slvData["V10M"])
+        val precipAvgs = getAverages(flxData["PRECTOT"])
 
         val morningU = uWindAvgs["morning"]
         val morningV = vWindAvgs["morning"]
-        val morningWindSpeed = if (morningU != null && morningV != null) sqrt(morningU.pow(2) + morningV.pow(2)) else null
+        val morningWind = if (morningU != null && morningV != null) sqrt(morningU.pow(2) + morningV.pow(2)) else null
 
         val afternoonU = uWindAvgs["afternoon"]
         val afternoonV = vWindAvgs["afternoon"]
-        val afternoonWindSpeed = if (afternoonU != null && afternoonV != null) sqrt(afternoonU.pow(2) + afternoonV.pow(2)) else null
+        val afternoonWind = if (afternoonU != null && afternoonV != null) sqrt(afternoonU.pow(2) + afternoonV.pow(2)) else null
 
         val nightU = uWindAvgs["night"]
         val nightV = vWindAvgs["night"]
-        val nightWindSpeed = if (nightU != null && nightV != null) sqrt(nightU.pow(2) + nightV.pow(2)) else null
+        val nightWind = if (nightU != null && nightV != null) sqrt(nightU.pow(2) + nightV.pow(2)) else null
 
-        return GesDiscParsedData(
+        // Rate is in kg/m^2/s (or mm/s). To get total precipitation for a period,
+        // multiply the average rate by the period duration in seconds (8 hours).
+        val precipConversionFactor = 8 * 3600
+
+        GesDiscParsedData(
             date = date,
-            morningTemperatureInCelsius = morningTempC,
-            afternoonTemperatureInCelsius = afternoonTempC,
-            nightTemperatureInCelsius = nightTempC,
-            morningWindSpeed = morningWindSpeed,
-            afternoonWindSpeed = afternoonWindSpeed,
-            nightWindSpeed = nightWindSpeed,
-            precipitation = null,
-            snowMass = null
+            morningTemperatureInCelsius = tempAvgs["morning"]?.minus(273.15),
+            afternoonTemperatureInCelsius = tempAvgs["afternoon"]?.minus(273.15),
+            nightTemperatureInCelsius = tempAvgs["night"]?.minus(273.15),
+            morningWindSpeed = morningWind,
+            afternoonWindSpeed = afternoonWind,
+            nightWindSpeed = nightWind,
+            morningPrecipitationInMm = precipAvgs["morning"]?.times(precipConversionFactor),
+            afternoonPrecipitationInMm = precipAvgs["afternoon"]?.times(precipConversionFactor),
+            nightPrecipitationInMm = precipAvgs["night"]?.times(precipConversionFactor)
         )
     }
 }
