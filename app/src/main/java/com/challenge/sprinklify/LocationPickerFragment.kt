@@ -153,8 +153,14 @@ fun LocationPickerFragment(navController: NavController) {
                     Button(
                         onClick = {
                             val encodedDate = URLEncoder.encode(selectedDate, "UTF-8")
-                            val selectedMode = modes[selectedModeIndex]
-                            navController.navigate("forecast/$encodedDate/${selectedLocation!!.latitude}/${selectedLocation!!.longitude}/$selectedMode")
+                            val lat = selectedLocation!!.latitude
+                            val lng = selectedLocation!!.longitude
+
+                            if (selectedModeIndex == 0) { // Simple
+                                navController.navigate("forecast/$encodedDate/$lat/$lng")
+                            } else { // Precision
+                                navController.navigate("precise-forecast/$encodedDate/$lat/$lng")
+                            }
                         },
                         enabled = selectedDate != "Select Date" && selectedLocation != null,
                         colors = ButtonDefaults.buttonColors(

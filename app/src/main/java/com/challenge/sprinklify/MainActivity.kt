@@ -18,17 +18,21 @@ class MainActivity : FragmentActivity() {
                 composable("location") {
                     LocationPickerFragment(navController)
                 }
-                composable("forecast/{date}/{lat}/{lng}/{mode}") { backStackEntry ->
+                composable("forecast/{date}/{lat}/{lng}") { backStackEntry ->
                     val date = backStackEntry.arguments?.getString("date") ?: ""
                     val lat = backStackEntry.arguments?.getString("lat") ?: ""
                     val lng = backStackEntry.arguments?.getString("lng") ?: ""
-                    val mode = backStackEntry.arguments?.getString("mode") ?: "Simple"
-                    ForecastFragment(navController, date, lat, lng, mode)
+                    ForecastFragment(navController, date, lat, lng)
+                }
+                composable("precise-forecast/{date}/{lat}/{lng}") { backStackEntry ->
+                    val date = backStackEntry.arguments?.getString("date") ?: ""
+                    val lat = backStackEntry.arguments?.getString("lat") ?: ""
+                    val lng = backStackEntry.arguments?.getString("lng") ?: ""
+                    PreciseForecastFragment(navController, date, lat, lng)
                 }
                 composable("details/{title}/{data}") { backStackEntry ->
                     val title = backStackEntry.arguments?.getString("title") ?: ""
                     val data = backStackEntry.arguments?.getString("data") ?: ""
-                    // Manually parse the string and convert it to a FloatArray
                     val floatArray = data.split(",").mapNotNull { it.trim().toFloatOrNull() }.toFloatArray()
                     DetailsFragment(navController, title, floatArray)
                 }

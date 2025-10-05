@@ -46,21 +46,18 @@ import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.net.URLEncoder
-import java.time.LocalDate
 import java.util.Calendar
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ForecastFragment(navController: NavController, date: String, lat: String, lng: String, mode: String) {
+fun ForecastFragment(navController: NavController, date: String, lat: String, lng: String) {
     var tempHistory by remember { mutableStateOf<Map<Int, Float>?>(null) }
     var precipHistory by remember { mutableStateOf<Map<Int, Float>?>(null) }
     var windHistory by remember { mutableStateOf<Map<Int, Float>?>(null) }
     var snowHistory by remember { mutableStateOf<Map<Int, Float>?>(null) }
-    var gesDiscHistory by remember { mutableStateOf<List<GesDiscParsedData>?>(null) }
     var isLoading by remember { mutableStateOf(true) }
 
-    LaunchedEffect(key1 = mode) {
-        isLoading = true
+    LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
             try {
                 val dateParts = date.split("/")
@@ -70,77 +67,38 @@ fun ForecastFragment(navController: NavController, date: String, lat: String, ln
                 val endYear = calendar.get(Calendar.YEAR) - 1
                 val startYear = endYear - 40
 
-                if (mode == "Precision") {
-                    Log.d("ForecastFragment", "Fetching data in Precision mode")
-                    val latDouble = lat.toDouble()
-                    val lonDouble = lng.toDouble()
+                val response = RetrofitClient.instance.getPowerData(
+                    parameters = "T2M,PRECTOTCORR,WS10M,SNODP",
+                    longitude = lng,
+                    latitude = lat,
+                    start = "$startYear",
+                    end = "$endYear"
+                )
+                val monthDayString = "%02d%02d".format(month, day)
 
-                    val historicalData = mutableListOf<GesDiscParsedData>()
-                    for (year in startYear..endYear) {
-                        try {
-                            val queryDate = LocalDate.of(year, month, day)
-                            val dailyData = GesDiscRepository.fetchAndParseSingleDayData(queryDate, latDouble, lonDouble)
-                            historicalData.add(dailyData)
-                        } catch (e: Exception) {
-                            Log.e("GesDiscYearError", "Failed to fetch GES DISC data for $year", e)
-                        }
-                    }
-                    gesDiscHistory = historicalData
-                    Log.d("GesDiscApiSuccess", "Successfully fetched ${historicalData.size} years of GES DISC data.")
-
-                    tempHistory = historicalData.mapNotNull { data ->
-                        val avgTemp = listOfNotNull(data.morningTemperatureInCelsius, data.afternoonTemperatureInCelsius, data.nightTemperatureInCelsius).average()
-                        if (avgTemp.isNaN()) null else data.date.year to avgTemp.toFloat()
-                    }.toMap()
-
-                    windHistory = historicalData.mapNotNull { data ->
-                        val avgWind = listOfNotNull(data.morningWindSpeed, data.afternoonWindSpeed, data.nightWindSpeed).average()
-                        if (avgWind.isNaN()) null else data.date.year to avgWind.toFloat()
-                    }.toMap()
-
-                    precipHistory = emptyMap()
-                    snowHistory = emptyMap()
-
-                } else { // "Simple" mode
-                    Log.d("ForecastFragment", "Fetching data in Simple mode")
-                    val response = RetrofitClient.instance.getPowerData(
-                        parameters = "T2M,PRECTOTCORR,WS10M,SNODP",
-                        longitude = lng,
-                        latitude = lat,
-                        start = "$startYear",
-                        end = "$endYear"
-                    )
-                    val monthDayString = "%02d%02d".format(month, day)
-
-                    tempHistory = response.properties.parameter.temperature
-                        .filter { it.key.endsWith(monthDayString) && it.value != -999.0 }
-                        .map { it.key.substring(0, 4).toInt() to it.value.toFloat() }
-                        .toMap()
-                    precipHistory = response.properties.parameter.precipitation
-                        .filter { it.key.endsWith(monthDayString) && it.value != -999.0 }
-                        .map { it.key.substring(0, 4).toInt() to it.value.toFloat() }
-                        .toMap()
-                    windHistory = response.properties.parameter.windSpeed
-                        .filter { it.key.endsWith(monthDayString) && it.value != -999.0 }
-                        .map { it.key.substring(0, 4).toInt() to it.value.toFloat() }
-                        .toMap()
-                    snowHistory = response.properties.parameter.snowDepth
-                        .filter { it.key.endsWith(monthDayString) && it.value != -999.0 }
-                        .map { it.key.substring(0, 4).toInt() to it.value.toFloat() }
-                        .toMap()
-                }
+                tempHistory = response.properties.parameter.temperature
+                    .filter { it.key.endsWith(monthDayString) && it.value != -999.0 }
+                    .map { it.key.substring(0, 4).toInt() to it.value.toFloat() }
+                    .toMap()
+                precipHistory = response.properties.parameter.precipitation
+                    .filter { it.key.endsWith(monthDayString) && it.value != -999.0 }
+                    .map { it.key.substring(0, 4).toInt() to it.value.toFloat() }
+                    .toMap()
+                windHistory = response.properties.parameter.windSpeed
+                    .filter { it.key.endsWith(monthDayString) && it.value != -999.0 }
+                    .map { it.key.substring(0, 4).toInt() to it.value.toFloat() }
+                    .toMap()
+                snowHistory = response.properties.parameter.snowDepth
+                    .filter { it.key.endsWith(monthDayString) && it.value != -999.0 }
+                    .map { it.key.substring(0, 4).toInt() to it.value.toFloat() }
+                    .toMap()
             } catch (e: Exception) {
-                Log.e("ForecastApiError", "Error fetching forecast data in $mode mode", e)
-                tempHistory = emptyMap()
-                precipHistory = emptyMap()
-                windHistory = emptyMap()
-                snowHistory = emptyMap()
+                Log.e("NasaApiError", "Error fetching POWER data", e)
             } finally {
                 isLoading = false
             }
         }
     }
-
 
     fun navigateToDetails(title: String, data: Map<Int, Float>?) {
         data?.let {
@@ -154,13 +112,10 @@ fun ForecastFragment(navController: NavController, date: String, lat: String, ln
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text("Weather History") },
+                    title = { Text("Simple Forecast") },
                     navigationIcon = {
                         IconButton(onClick = { navController.navigateUp() }) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Back"
-                            )
+                            Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
