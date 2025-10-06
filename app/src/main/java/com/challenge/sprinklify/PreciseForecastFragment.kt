@@ -322,13 +322,22 @@ fun DailyAverageCard(title: String, icon: ImageVector, value: String) {
 
 @Composable
 fun HourlyDataItem(hour: Int, value: Double?, unit: String, onClick: () -> Unit) {
+    val containerColor = if (hour % 2 == 0) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.background
+    }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 2.dp)
             .clickable(onClick = onClick),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant)
+        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant),
+        colors = CardDefaults.cardColors(
+            containerColor = containerColor
+        )
     ) {
         Row(
             modifier = Modifier
@@ -340,8 +349,7 @@ fun HourlyDataItem(hour: Int, value: Double?, unit: String, onClick: () -> Unit)
             Text(
                 text = "%02d:00".format(hour),
                 fontSize = 16.sp,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                fontWeight = FontWeight.Medium
             )
             Text(
                 text = value?.let { "%.2f $unit".format(it) } ?: "N/A",
